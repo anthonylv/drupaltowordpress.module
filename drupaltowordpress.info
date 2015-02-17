@@ -1,0 +1,3 @@
+name = Drupal to WordPress
+description = A module to analyse your Drupal database prior to migration.
+core = 6.x

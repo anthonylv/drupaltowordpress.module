@@ -1,0 +1,239 @@
+<?php
+
+/**********
+ * Define help text
+ */
+function drupaltowordpress_help($path, $arg) {
+	$output = '';
+	switch ($path) {
+	case "admin/help#drupaltowordpress":
+		$output = '<p>'.  t("Displays Drupal to Wordpress analysis") .'</p>';
+		break;
+	}
+	  return $output;
+}
+
+
+/**********
+ * Define valid permissions
+ */
+function drupaltowordpress_perm() {
+	return array('access drupaltowordpress content');
+}
+
+
+/**********
+ * Create a block containing the menu for this module
+ */
+function drupaltowordpress_block($op = 'list', $delta = 0, $edit = array()) {  
+
+	// set up an empty array which will contain the block contents
+	$block = array();
+
+ 	switch ($op) {
+    	case "list":
+      	// Generate listing of blocks from this module, for the admin/block page
+      	$block[0]["info"] = t('Drupal to WordPress');
+      	break;
+
+    	case "view":
+		// Generate our block content
+		$block_content .= "<ul><li>".l("Results", "d2w/results")."</li>";
+		$block_content .= "<li>".l("View duplicate terms", "d2w/duplicate_terms")."</li>";
+		$block_content .= "</ul>";
+
+        //Setup the block        
+        $block["subject"] = t("Drupal to WordPress");
+
+        //Check that content isn't empty
+        if ($block_content == "") {
+            $block_content = t("Sorry, no content to display.");            
+        }
+        $block["content"] = $block_content;
+      	break;
+
+    	case "save":
+      	break;
+
+    	case "configure":
+      	break;
+  	}
+
+ 	return $block;
+}
+
+
+/**********
+ * 
+ */
+function drupaltowordpress_menu() {
+	$items = array();
+
+	$items['admin/settings/drupaltowordpress'] = array(
+	  'title' => 'Drupal to WordPress module settings',
+	  'description' => 'Description of your Drupal to WordPress settings page',
+	  'page callback' => 'drupal_get_form',
+	  'page arguments' => array('drupaltowordpress_admin'),
+	  'access arguments' => array('administer drupaltowordpress settings'),
+	  'type' => MENU_NORMAL_ITEM,
+	 );
+	
+	// Analysis results page
+	$items['d2w/results'] = array(
+	  'title' => 'Drupal to WordPress',
+	  'page callback' => 'drupaltowordpress_results',
+	  'access arguments' => array('access drupaltowordpress content'),
+	  'type' => MENU_CALLBACK,
+	);
+	
+	// Duplicate terms page
+	$items['d2w/duplicate_terms'] = array(
+	  'title' => 'Duplicate terms',
+	  'page callback' => 'drupaltowordpress_duplicate_terms',
+	  'access arguments' => array('access drupaltowordpress content'),
+	  'type' => MENU_CALLBACK,
+	);	
+
+	return $items;
+}
+
+
+/**********
+ * Display results of the analysis in a page
+ */
+function drupaltowordpress_results() {
+	// content variable that will be returned for display
+	$page_content = '';
+	$abort = false;
+
+	// Get terms
+	$query = "SELECT DISTINCT tid, name FROM {term_data} WHERE (1);";
+	$result = db_query($query);
+	$terms_count = $result->num_rows;
+	
+	$query = "SELECT DISTINCT type, name, description FROM {node_type} n;";
+	$result = db_query($query);
+	$node_types_result = $result;
+	$node_types_count = $result->num_rows;
+	$node_types_params_list = buildListBox($node_types_result);
+	
+	$query = "SELECT DISTINCT nid FROM {node};";
+	$result = db_query($query);
+	$posts_count = $result->num_rows;
+
+	/*
+	 * Can't import duplicate terms into the WordPress wp_terms table
+	 * Get aggregate of terms with duplicate names; we don't want each individual term
+	 * entry with a duplicate name
+	 */
+	$query = "SELECT tid, name, COUNT(*) c FROM {term_data} GROUP BY name HAVING c > 1;";
+	$result = db_query($query);
+	$duplicate_terms_count = $result->num_rows;	
+
+	// Build the page content
+	$page_content .= "<table class=\"analysis_table\"><caption>Drupal properties</caption><thead>";
+	$page_content .= "<th class=\"property\">Property</th><th class=\"found\">Found in Drupal</th></thead><tbody>";
+
+	$page_content .= "<tr><td>Terms</td><td>$terms_count terms</td></tr>";
+	$page_content .= "<tr><td>Node types</td><td>$node_types_count node types <br />".
+				$node_types_params_list."</td></tr>";
+	$page_content .= "<tr><td>Entries</td><td>$posts_count entries</td></tr>";
+	$page_content .= "</tbody></table>";
+	
+
+	// Any potential problems? Don't show migration options
+	if(!$abort)
+	{
+		$page_content .= "<table class=\"problems_table\"><caption id=\"problems\">Possible problems</caption><thead>";
+		$page_content .= "<th class=\"problem_property\">Problem</th><th class=\"problem_found\">Description</th></thead><tbody>";
+
+		// Duplicate terms?
+		if($duplicate_terms_count > 0) {
+			$page_content .= "<tr><td>Duplicate terms</td><td><div id=\"dup_terms\"><p>$duplicate_terms_count duplicate terms. We can't import duplicate terms into WordPress. The migration will fail if these are to be included. ";
+			$page_content .= l("View duplicate terms", "d2w/duplicate_terms");
+			
+		}
+		// Exceeded terms character length?
+		if($terms_charlength_exceeded_count > 0) {
+			$page_content .= "Exceeded terms character length count";
+		}
+		// Duplicate aliases?
+		if($duplicate_aliases_count > 0) {
+			$page_content .= "Duplicate aliases count";
+		}
+		$page_content .=  "</tbody></table>";
+	}
+	
+	if ($page_content == '') {
+		$page_content = "Sorry, no content to display.";
+	}
+
+	return $page_content;
+}
+
+
+/**********
+ * Display table of duplicate terms in a page
+ */
+function drupaltowordpress_duplicate_terms() {
+	// content variable that will be returned for display
+	$page_content = '';
+
+	/*
+	 * Can't import duplicate terms into the WordPress wp_terms table
+	 * Get aggregate of terms with duplicate names; we don't want each individual term
+	 * entry with a duplicate name
+	 */
+	$query = "SELECT tid, name, COUNT(*) c FROM {term_data} GROUP BY name HAVING c > 1;";
+	$result = db_query($query);
+	$duplicate_terms_count = $result->num_rows;
+	
+	if ($duplicate_terms_count > 0 ) {
+		
+		$page_content .= "<p>You have <strong>$duplicate_terms_count duplicate term names</strong>. We can't import duplicate term names into WordPress, even if Drupal stores them in different Vocabularies. The migration will fail if these are to be included.</p>";
+		
+		$page_content .= "<table class=\"problems_table\">
+			<caption class=\"problems\">Duplicate terms</caption>
+			<thead>
+				<th class=\"problem_found\">tid</th>
+				<th class=\"problem_found\">name</th>
+				<th class=\"problem_found\">count</th>
+			</thead>
+			<tbody>";
+
+			while ($terms = db_fetch_object($result)) {
+				$duplicate_terms_array[$terms->tid] = $terms->name;
+				$page_content .= "<tr><td>".$terms->tid."</td><td>".
+									$terms->name."</td><td>".
+									$terms->c."</td></tr>";
+		    }
+	
+		$page_content .= "</table>";
+	}
+	
+	if ($page_content == '') {
+		$page_content = "You have no duplicate terms.";
+	}
+
+	return $page_content;
+}
+
+
+/**********
+ * Builds a HTML listbox
+ */
+function buildListBox($params_array) {	
+	// Build node types list
+	$node_types_count = count($params_array);
+	$listbox = "";
+
+	$listbox = "<select name=\"sometext\" size=\"5\">";
+	if ($node_types_count) { 
+		foreach ($params_array as $row_key => $row_val) {
+			$listbox .= "<option>".$row_val['type']."</option>";
+		}
+	}
+	$listbox .= "</select>";
+	
+	return $listbox;
+}
