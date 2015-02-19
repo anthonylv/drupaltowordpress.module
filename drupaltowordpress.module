@@ -39,7 +39,8 @@ function drupaltowordpress_block($op = 'list', $delta = 0, $edit = array()) {
     	case "view":
 		// Generate our block content
 		$block_content .= "<ul><li>".l("Results", "d2w/results")."</li>";
-		$block_content .= "<li>".l("View duplicate terms", "d2w/duplicate_terms")."</li>";
+		$block_content .= "<li>".l("Duplicate terms", "d2w/duplicate_terms")."</li>";
+		$block_content .= "<li>".l("Charlength exceeded terms", "d2w/charlength_exceeded")."</li>";
 		$block_content .= "</ul>";
 
         //Setup the block        
@@ -94,6 +95,22 @@ function drupaltowordpress_menu() {
 	  'type' => MENU_CALLBACK,
 	);	
 
+	// Exceeded terms character length page
+	$items['d2w/charlength_exceeded'] = array(
+	  'title' => 'Exceeded terms character length',
+	  'page callback' => 'drupaltowordpress_charlength_exceeded',
+	  'access arguments' => array('access drupaltowordpress content'),
+	  'type' => MENU_CALLBACK,
+	);
+	
+	// Duplicate aliases page
+	$items['d2w/duplicate_aliases'] = array(
+	  'title' => 'Duplicate aliases',
+	  'page callback' => 'drupaltowordpress_duplicate_aliases',
+	  'access arguments' => array('access drupaltowordpress content'),
+	  'type' => MENU_CALLBACK,
+	);	
+
 	return $items;
 }
 
@@ -128,8 +145,23 @@ function drupaltowordpress_results() {
 	 */
 	$query = "SELECT tid, name, COUNT(*) c FROM {term_data} GROUP BY name HAVING c > 1;";
 	$result = db_query($query);
-	$duplicate_terms_count = $result->num_rows;	
+	$duplicate_terms_count = $result->num_rows;
 
+	/*
+	 * WordPress term name field is set 200 chars but Drupal's is term name is 255 chars
+	 */
+	$query = "SELECT tid, name FROM {term_data} WHERE CHAR_LENGTH(name) > 200;";
+	$result = db_query($query);
+	$terms_charlength_exceeded_count = $result->num_rows;
+	
+	/*
+	 * Duplicate aliases will will cause integrity constraint violation
+	 */
+	$query = "SELECT pid, src, COUNT(*) c FROM {url_alias} GROUP BY src HAVING c > 1;";
+	$result = db_query($query);
+	$duplicate_aliases_count = $result->num_rows;
+	
+	
 	// Build the page content
 	$page_content .= "<table class=\"analysis_table\"><caption>Drupal properties</caption><thead>";
 	$page_content .= "<th class=\"property\">Property</th><th class=\"found\">Found in Drupal</th></thead><tbody>";
@@ -149,17 +181,22 @@ function drupaltowordpress_results() {
 
 		// Duplicate terms?
 		if($duplicate_terms_count > 0) {
-			$page_content .= "<tr><td>Duplicate terms</td><td><div id=\"dup_terms\"><p>$duplicate_terms_count duplicate terms. We can't import duplicate terms into WordPress. The migration will fail if these are to be included. ";
-			$page_content .= l("View duplicate terms", "d2w/duplicate_terms");
+			$page_content .= "<tr><td>Duplicate terms</td><td>$duplicate_terms_count duplicate terms. We can't import duplicate terms into WordPress. The migration will fail if these are to be included. ";
+			$page_content .= l("View terms", "d2w/duplicate_terms");
+			$page_content .= "</td></tr>";
 			
 		}
 		// Exceeded terms character length?
 		if($terms_charlength_exceeded_count > 0) {
-			$page_content .= "Exceeded terms character length count";
+			$page_content .= "<tr><td>Term character length exceeded</td><td>$terms_charlength_exceeded_count terms exceed WordPress' 200 character length. The migration will fail if these are to be included. <strong>Warning:</strong> fixing this problem will cause some data loss in the truncated columns. ";
+			$page_content .= l("View terms", "d2w/charlength_exceeded");
+			$page_content .= "</td></tr>";			
 		}
 		// Duplicate aliases?
 		if($duplicate_aliases_count > 0) {
-			$page_content .= "Duplicate aliases count";
+			$page_content .= "<tr><td>Duplicate aliases</td><td>$duplicate_aliases_count duplicate aliases found. Due to the way we build the WordPress post data, Drupal nodes with multiple url aliases will cause errors. ";
+			$page_content .= l("View aliases", "d2w/duplicate_aliases");
+			$page_content .= "</td></tr>";			
 		}
 		$page_content .=  "</tbody></table>";
 	}
@@ -196,13 +233,12 @@ function drupaltowordpress_duplicate_terms() {
 			<caption class=\"problems\">Duplicate terms</caption>
 			<thead>
 				<th class=\"problem_found\">tid</th>
-				<th class=\"problem_found\">name</th>
+				<th class=\"problem_found\">term name</th>
 				<th class=\"problem_found\">count</th>
 			</thead>
 			<tbody>";
 
 			while ($terms = db_fetch_object($result)) {
-				$duplicate_terms_array[$terms->tid] = $terms->name;
 				$page_content .= "<tr><td>".$terms->tid."</td><td>".
 									$terms->name."</td><td>".
 									$terms->c."</td></tr>";
@@ -211,6 +247,83 @@ function drupaltowordpress_duplicate_terms() {
 		$page_content .= "</table>";
 	}
 	
+	if ($page_content == '') {
+		$page_content = "You have no duplicate terms.";
+	}
+
+	return $page_content;
+}
+
+
+/**********
+ * Display table of terms exceeding charlength in a page
+ */
+function drupaltowordpress_charlength_exceeded() {
+	$page_content = '';
+
+	$query = "SELECT tid, name FROM {term_data} WHERE CHAR_LENGTH(name) > 200;";
+	$result = db_query($query);
+	$terms_charlength_exceeded_count = $result->num_rows;
+
+	if ($terms_charlength_exceeded_count > 0 ) {
+
+		$page_content .= "<p>You have <strong>$terms_charlength_exceeded_count terms</strong> exceeding WordPress' 200 character length for term names. The migration will fail if these are to be included. <strong>Warning:</strong> fixing this problem will cause some data loss in the truncated columns. </p>";
+
+		$page_content .= "<table class=\"problems_table\" style=\"table-layout: fixed;\">
+			<caption class=\"problems\">Term character length exceeded</caption>
+			<thead>
+				<th class=\"problem_found\" width=\"20%\">tid</th>
+				<th class=\"problem_found\"  style=\"width: 80%;\">term name</th>
+			</thead>
+			<tbody>";
+
+			while ($terms = db_fetch_object($result)) {
+				$page_content .= "<tr><td>".$terms->tid."</td><td style=\"word-wrap:break-word;\">".
+									$terms->name."</td></tr>";
+		    }
+
+		$page_content .= "</table>";
+	}
+
+	if ($page_content == '') {
+		$page_content = "You have no duplicate terms.";
+	}
+
+	return $page_content;
+}
+
+
+/**********
+ * Display table of duplicate aliases in a page
+ */
+function drupaltowordpress_duplicate_aliases() {
+	$page_content = '';
+
+	$query = "SELECT pid, src, COUNT(*) c FROM {url_alias} GROUP BY src HAVING c > 1;";
+	$result = db_query($query);
+	$duplicate_aliases_count = $result->num_rows;
+
+	if ($duplicate_aliases_count > 0 ) {
+
+		$page_content .= "<p>$duplicate_aliases_count duplicate aliases found. Due to the way we build the WordPress post data, Drupal nodes with multiple url aliases will cause errors. </p>";
+
+		$page_content .= "<table class=\"problems_table\" style=\"table-layout: fixed;\">
+			<caption class=\"problems\">Duplicate aliases</caption>
+			<thead>
+				<th class=\"problem_found\" width=\"45%\">pid</th>
+				<th class=\"problem_found\"  style=\"width: 45%;\">src</th>
+				<th class=\"problem_found\"  style=\"width: 10%;\">count</th>				
+			</thead>
+			<tbody>";
+
+			while ($aliases = db_fetch_object($result)) {
+				$page_content .= "<tr><td>".$aliases->pid."</td><td style=\"word-wrap:break-word;\">".$aliases->src."</td><td>".
+				$aliases->c."</td></tr>";
+		    }
+
+		$page_content .= "</table>";
+	}
+
 	if ($page_content == '') {
 		$page_content = "You have no duplicate terms.";
 	}
