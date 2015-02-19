@@ -41,7 +41,10 @@ function drupaltowordpress_block($op = 'list', $delta = 0, $edit = array()) {
 		$block_content .= "<ul><li>".l("Results", "d2w/results")."</li>";
 		$block_content .= "<li>".l("Duplicate terms", "d2w/duplicate_terms")."</li>";
 		$block_content .= "<li>".l("Charlength exceeded terms", "d2w/charlength_exceeded")."</li>";
+<<<<<<< HEAD
 		$block_content .= "<li>".l("Duplicate aliases", "d2w/duplicate_aliases")."</li>";		
+=======
+>>>>>>> FETCH_HEAD
 		$block_content .= "</ul>";
 
         //Setup the block        
