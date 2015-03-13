@@ -20,6 +20,13 @@ For more information, please see:
 http://anothercoffee.net/drupal-to-wordpress-migration-tool/
 
 
+--- Known issues ---
+On some Drupal installations, db_query() doesn't return any results. I'm currently
+unable to pinpoint the reason. If this happens on your site, instead of the results
+you'll see a message saying that this module is incompatible with your Drupal installation.
+
+
+
 First released 2015-02-16 by Anthony Lopez-Vito of Another Cup of Coffee Limited
 http://anothercoffee.net
 

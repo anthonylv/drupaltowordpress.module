@@ -125,10 +125,10 @@ function drupaltowordpress_results() {
 	$abort = false;
 
 	// Get terms
-	$query = "SELECT DISTINCT tid, name FROM {term_data} WHERE (1);";
+	$query = "SELECT DISTINCT tid, name FROM {term_data} WHERE (1)";
 	$result = db_query($query);
 	$terms_count = $result->num_rows;
-	
+
 	$query = "SELECT DISTINCT type, name, description FROM {node_type} n;";
 	$result = db_query($query);
 	$node_types_result = $result;
@@ -162,21 +162,31 @@ function drupaltowordpress_results() {
 	$result = db_query($query);
 	$duplicate_aliases_count = $result->num_rows;
 	
-	
-	// Build the page content
-	$page_content .= "<table class=\"analysis_table\"><caption>Drupal properties</caption><thead>";
-	$page_content .= "<th class=\"property\">Property</th><th class=\"found\">Found in Drupal</th></thead><tbody>";
-
-	$page_content .= "<tr><td>Terms</td><td>$terms_count terms</td></tr>";
-	$page_content .= "<tr><td>Node types</td><td>$node_types_count node types <br />".
-				$node_types_params_list."</td></tr>";
-	$page_content .= "<tr><td>Entries</td><td>$posts_count entries</td></tr>";
-	$page_content .= "</tbody></table>";
-	
+	/*
+	 * db_query() doesn't seem to work on some Drupal installations
+	 */
+	if($terms_count==false || 
+			$node_types_count==false || 
+			$posts_count == false ||
+			$duplicate_terms_count == false ||
+			$terms_charlength_exceeded_count == false ){
+		$abort=true;
+		$page_content = "Sorry, this module is incompatible with your Drupal installation.";
+	}
 
 	// Any potential problems? Don't show migration options
 	if(!$abort)
 	{
+		// Build the page content
+		$page_content .= "<table class=\"analysis_table\"><caption>Drupal properties</caption><thead>";
+		$page_content .= "<th class=\"property\">Property</th><th class=\"found\">Found in Drupal</th></thead><tbody>";
+
+		$page_content .= "<tr><td>Terms</td><td>$terms_count terms</td></tr>";
+		$page_content .= "<tr><td>Node types</td><td>$node_types_count node types <br />".
+					$node_types_params_list."</td></tr>";
+		$page_content .= "<tr><td>Entries</td><td>$posts_count entries</td></tr>";
+		$page_content .= "</tbody></table>";
+		
 		$page_content .= "<table class=\"problems_table\"><caption id=\"problems\">Possible problems</caption><thead>";
 		$page_content .= "<th class=\"problem_property\">Problem</th><th class=\"problem_found\">Description</th></thead><tbody>";
 
